@@ -68,7 +68,6 @@
     "@typescript-eslint/parser": "4.6.0",
     "eslint": "7.12.1",
     "jest": "26.6.1",
-    "lerna": "3.22.1",
     "nock": "13.0.4",
     "prettier": "^2.4.1",
     "supertest": "6.0.0",
