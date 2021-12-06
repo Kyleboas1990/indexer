@@ -29,6 +29,7 @@ import pMap from 'p-map'
 import pFilter from 'p-filter'
 import { ReceiptCollector } from './query-fees'
 
+// are these lists ordered? why a list?
 const allocationInList = (
   list: Allocation[],
   allocation: Allocation,
@@ -49,6 +50,10 @@ const uniqueDeploymentsOnly = (
 const uniqueDeployments = (
   deployments: SubgraphDeploymentID[],
 ): SubgraphDeploymentID[] => deployments.filter(uniqueDeploymentsOnly)
+
+const deploymentIDSet = (
+  deployments: SubgraphDeploymentID[],
+): Set<string> => new Set(deployments.map(id => id.display.bytes32))
 
 class Agent {
   logger: Logger
@@ -86,6 +91,7 @@ class Agent {
     this.logger.info(`Connected to Graph node(s)`)
 
     // Ensure there is a 'global' indexing rule
+    // why?
     await this.indexer.ensureGlobalIndexingRule()
 
     if (this.registerIndexer) {
@@ -314,6 +320,7 @@ class Agent {
         id: allocation.id,
         deployment: allocation.subgraphDeployment.id.display,
         createdAtEpoch: allocation.createdAtEpoch,
+        amount: allocation.queryFeeRebates,
       })),
     })
     await pMap(
@@ -477,10 +484,14 @@ class Agent {
       }
     }
 
-    this.logger.info('Reconcile deployments', {
-      active: activeDeployments.map(id => id.display),
-      target: targetDeployments.map(id => id.display),
-    })
+    // only show Reconcile when active ids != target ids
+    // alternatively: change the level to trace? add a new log level? verbosity? 
+    if (deploymentIDSet(activeDeployments) !=  deploymentIDSet(targetDeployments)) {
+      this.logger.info('Reconcile deployments', {
+        active: activeDeployments.map(id => id.display),
+        target: targetDeployments.map(id => id.display),
+      })
+    }
 
     // Identify which subgraphs to deploy and which to remove
     const deploy = targetDeployments.filter(
@@ -533,6 +544,7 @@ class Agent {
     currentEpochStartBlock: BlockPointer,
     maxAllocationEpochs: number,
   ): Promise<void> {
+    // with only 1 allcoation per deployment, can link 1:1 or smush together?
     const allocationLifetime = Math.max(1, maxAllocationEpochs - 1)
 
     this.logger.info(`Reconcile allocations`, {
@@ -562,7 +574,7 @@ class Agent {
 
     this.logger.debug(`Deployments to reconcile allocations for`, {
       number: deployments.length,
-      deployments: deployments.map(deployment => deployment.display),
+      deployments: deploymentIDSet(deployments),
     })
 
     await pMap(
@@ -578,9 +590,7 @@ class Agent {
           ),
 
           // Whether the deployment is worth indexing
-          targetDeployments.find(
-            target => target.bytes32 === deployment.bytes32,
-          ) !== undefined,
+          deploymentInList(targetDeployments, deployment), 
 
           // Indexing rule for the deployment (if any)
           rules.find(rule => rule.deployment === deployment.bytes32) ||
@@ -609,40 +619,41 @@ class Agent {
       epoch,
     })
 
-    const allocationAmount = rule?.allocationAmount
+    const desiredAllocationAmount = rule?.allocationAmount
       ? BigNumber.from(rule.allocationAmount)
       : this.indexer.defaultAllocationAmount
     const desiredNumberOfAllocations = Math.max(
       1,
       rule?.parallelAllocations || 1,
     )
+    const activeAllocationAmount = activeAllocations.reduce(
+      (sum, allocation) => sum.add(allocation.allocatedTokens),
+      BigNumber.from('0'),
+    )
 
-    logger.info(`Reconcile deployment allocations`, {
-      allocationAmount: formatGRT(allocationAmount),
+    logger.trace(
+      `Reconcile deployment allocations for deployment '${deployment.ipfsHash}'`,
+      {
+        desiredAllocationAmount: formatGRT(desiredAllocationAmount),
 
-      totalActiveAllocationAmount: formatGRT(
-        activeAllocations.reduce(
-          (sum, allocation) => sum.add(allocation.allocatedTokens),
-          BigNumber.from('0'),
-        ),
-      ),
+        totalActiveAllocationAmount: formatGRT(activeAllocationAmount),
 
-      desiredNumberOfAllocations,
-      activeNumberOfAllocations: activeAllocations.length,
+        desiredNumberOfAllocations,
+        activeNumberOfAllocations: activeAllocations.length,
 
-      activeAllocations: activeAllocations.map(allocation => ({
-        id: allocation.id,
-        createdAtEpoch: allocation.createdAtEpoch,
-        amount: formatGRT(allocation.allocatedTokens),
-      })),
-    })
+        activeAllocations: activeAllocations.map(allocation => ({
+          id: allocation.id,
+          createdAtEpoch: allocation.createdAtEpoch,
+          amount: formatGRT(allocation.allocatedTokens),
+        })),
+      },
+    )
 
     // Return early if the deployment is not (or no longer) worth indexing
     if (!worthIndexing) {
       logger.info(
-        `Deployment is not (or no longer) worth indexing, close all active allocations that are at least one epoch old`,
+        `Deployment is not (or no longer) worth indexing, please close allocation if it is from a previous epoch`,
         {
-          activeAllocations: activeAllocations.map(allocation => allocation.id),
           eligibleForClose: activeAllocations
             .filter(allocation => allocation.createdAtEpoch < epoch)
             .map(allocation => allocation.id),
@@ -652,7 +663,7 @@ class Agent {
       // Make sure to close all active allocations on the way out
       if (activeAllocations.length > 0) {
         await pMap(
-          // We can only close allocations that are at least one epoch old;
+          // We can only close allocations from a previous epoch;
           // try the others again later
           activeAllocations.filter(
             allocation => allocation.createdAtEpoch < epoch,
@@ -785,11 +796,31 @@ class Agent {
       poi === null ||
       poi === utils.hexlify(Array(32).fill(0))
     ) {
-      this.logger.error(`Received a null or zero POI for deployment`, {
-        deployment: allocation.subgraphDeployment.id.display,
-        allocation: allocation.id,
-        epochStartBlock,
-      })
+      const indexingStatus = await this.indexer.indexingStatus(allocation.subgraphDeployment.id)
+      const fatalError = indexingStatus.fatalError
+      // can agent check if the error is determinisitic? 
+      // if so inform latest valid POI
+      if (!fatalError) {
+        this.logger.error(`Received a null or zero POI for deployment`, {
+          deployment: allocation.subgraphDeployment.id.display,
+          allocation: allocation.id,
+          epochStartBlock,
+        })
+      } else{
+        const latestValidPoi = await this.indexer.proofOfIndexing(
+          allocation.subgraphDeployment.id, 
+          {
+            number: indexingStatus.chains[0].latestBlock.number,
+            hash: indexingStatus.chains[0].latestBlock.hash,
+          }, 
+          this.indexer.indexerAddress)
+        this.logger.error(`Received a null or zero POI for deployment`, {
+          deployment: allocation.subgraphDeployment.id.display,
+          allocation: allocation.id,
+          fatalError,
+          latestValidPoi
+        })  
+      }
 
       return { closed: false, collectingQueryFees: false }
     }

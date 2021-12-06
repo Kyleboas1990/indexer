@@ -512,7 +512,7 @@ export default {
     // Prevent passing empty basicAuth info
     let username
     let password
-    if (providerUrl.username == '' && providerUrl.password == '') {
+    if (providerUrl.username == '' || providerUrl.password == '') {
       username = undefined
       password = undefined
     } else {
@@ -565,7 +565,7 @@ export default {
     wallet = wallet.connect(ethereum)
     logger.info(`Connected wallet`)
 
-    logger.info(`Connecting to contracts`)
+    logger.info(`Connect to contracts`)
     let contracts = undefined
     try {
       contracts = await connectContracts(wallet, ethereum.network.chainId)

@@ -382,6 +382,8 @@ export class AllocationReceiptCollector implements ReceiptCollector {
         },
       )
     } catch (err) {
+      // seems to be trying repeatedly
+      // should this accumulate? or add attemps similar to querying proof of indexing?
       logger.error(`Failed to redeem query fee voucher`, {
         err: indexerError(IndexerErrorCode.IE055, err),
       })

@@ -491,8 +491,8 @@ export class Network {
     )
 
     while (!queryProgress.exhausted) {
-      this.logger.debug(`Query subgraph deployments`, {
-        queryProgress: queryProgress,
+      this.logger.trace(`Query subgraph deployments`, {
+        queryProgress,
       })
       try {
         const result = await this.networkSubgraph.query(
@@ -528,7 +528,6 @@ export class Network {
         queryProgress.exhausted = results.length < queryProgress.first
         queryProgress.fetched += results.length
         queryProgress.lastId = results[results.length - 1].id
-
         deployments.push(
           ...results
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1432,7 +1431,11 @@ export class Network {
       restakeRewards: this.restakeRewards,
     })
     try {
-      logger.info(`Claim tokens from the rebate pool for allocation`)
+      logger.info(`Claim tokens from the rebate pool for allocation`, {
+        deployment: allocation.subgraphDeployment.id.display,
+        allocation: allocation.id,
+        claimAmount: this.restakeRewards,
+      })
 
       // Double-check whether the allocation is claimed to
       // avoid unnecessary transactions.
@@ -1452,6 +1455,7 @@ export class Network {
         logger.info(`Allocation still active`)
         return true
       }
+      // both state 2&3 (allocation closed and finalized) lead to claim? 
 
       // Claim the earned value from the rebate pool, returning it to the indexers stake
       const receipt = await this.executeTransaction(
@@ -1469,7 +1473,8 @@ export class Network {
       if (receipt === 'paused' || receipt === 'unauthorized') {
         return false
       }
-      logger.info(`Successfully claimed allocation`)
+      logger.info(`Successfully claimed allocation`, 
+        receipt.logs)
       return true
     } catch (err) {
       logger.warn(`Failed to claim allocation`, {
