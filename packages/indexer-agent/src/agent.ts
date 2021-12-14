@@ -29,7 +29,6 @@ import pMap from 'p-map'
 import pFilter from 'p-filter'
 import { ReceiptCollector } from './query-fees'
 
-// are these lists ordered? why a list?
 const allocationInList = (
   list: Allocation[],
   allocation: Allocation,
@@ -91,7 +90,6 @@ class Agent {
     this.logger.info(`Connected to Graph node(s)`)
 
     // Ensure there is a 'global' indexing rule
-    // why?
     await this.indexer.ensureGlobalIndexingRule()
 
     if (this.registerIndexer) {
@@ -108,7 +106,8 @@ class Agent {
 
     const currentEpochStartBlock = currentEpoch.tryMap(
       async () => {
-        const startBlockNumber = await this.network.contracts.epochManager.currentEpochBlock()
+        const startBlockNumber =
+          await this.network.contracts.epochManager.currentEpochBlock()
         const startBlock = await this.network.ethereum.getBlock(
           startBlockNumber.toNumber(),
         )
@@ -189,6 +188,24 @@ class Agent {
       },
     )
 
+    const recentlyClosedAllocations = join({
+      activeAllocations,
+      currentEpoch,
+    }).tryMap(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ activeAllocations, currentEpoch }) =>
+        this.network.recentlyClosedAllocations(
+          currentEpoch.toNumber(),
+          1, //TODO: Parameterize with a user provided value
+        ),
+      {
+        onError: () =>
+          this.logger.warn(
+            `Failed to obtain active allocations, trying again later`,
+          ),
+      },
+    )
+
     const claimableAllocations = join({
       currentEpoch,
       channelDisputeEpochs,
@@ -231,6 +248,7 @@ class Agent {
       activeDeployments,
       targetDeployments,
       activeAllocations,
+      recentlyClosedAllocations,
       claimableAllocations,
       disputableAllocations,
     }).pipe(
@@ -244,6 +262,7 @@ class Agent {
         activeDeployments,
         targetDeployments,
         activeAllocations,
+        recentlyClosedAllocations,
         claimableAllocations,
         disputableAllocations,
       }) => {
@@ -291,7 +310,7 @@ class Agent {
           await this.reconcileDeployments(
             activeDeployments,
             targetDeployments,
-            activeAllocations,
+            [...recentlyClosedAllocations, ...activeAllocations],
           )
 
           // Reconcile allocations
@@ -323,13 +342,9 @@ class Agent {
         amount: allocation.queryFeeRebates,
       })),
     })
-    await pMap(
-      allocations,
-      async allocation => {
-        await this.network.claim(allocation)
-      },
-      { concurrency: 1 },
-    )
+    if (allocations.length > 0) {
+      await this.network.claimMany(allocations)
+    }
   }
 
   async identifyPotentialDisputes(
@@ -434,13 +449,13 @@ class Agent {
           closedEpoch: allocation.closedAtEpoch,
           closedEpochReferenceProof: rewardsPool!.referencePOI,
           closedEpochStartBlockHash: allocation.closedAtEpochStartBlockHash!,
-          closedEpochStartBlockNumber: rewardsPool!
-            .closedAtEpochStartBlockNumber!,
+          closedEpochStartBlockNumber:
+            rewardsPool!.closedAtEpochStartBlockNumber!,
           previousEpochReferenceProof: rewardsPool!.referencePreviousPOI,
-          previousEpochStartBlockHash: rewardsPool!
-            .previousEpochStartBlockHash!,
-          previousEpochStartBlockNumber: rewardsPool!
-            .previousEpochStartBlockNumber!,
+          previousEpochStartBlockHash:
+            rewardsPool!.previousEpochStartBlockHash!,
+          previousEpochStartBlockNumber:
+            rewardsPool!.previousEpochStartBlockNumber!,
           status,
         } as POIDisputeAttributes
       },
@@ -460,12 +475,13 @@ class Agent {
   async reconcileDeployments(
     activeDeployments: SubgraphDeploymentID[],
     targetDeployments: SubgraphDeploymentID[],
-    activeAllocations: Allocation[],
+    eligibleAllocations: Allocation[],
   ): Promise<void> {
     activeDeployments = uniqueDeployments(activeDeployments)
     targetDeployments = uniqueDeployments(targetDeployments)
-    const activeAllocationDeployments = uniqueDeployments(
-      activeAllocations.map(allocation => allocation.subgraphDeployment.id),
+    // Note eligibleAllocations are active or recently closed allocations still eligible for queries from the gateway
+    const eligibleAllocationDeployments = uniqueDeployments(
+      eligibleAllocations.map(allocation => allocation.subgraphDeployment.id),
     )
 
     // Ensure the network subgraph deployment is _always_ indexed
@@ -500,7 +516,7 @@ class Agent {
     const remove = activeDeployments.filter(
       deployment =>
         !deploymentInList(targetDeployments, deployment) &&
-        !deploymentInList(activeAllocationDeployments, deployment),
+        !deploymentInList(eligibleAllocationDeployments, deployment),
     )
 
     this.logger.info('Deployment changes', {
@@ -551,6 +567,7 @@ class Agent {
       currentEpoch,
       maxAllocationEpochs,
       allocationLifetime,
+      targetDeployments,
       active: activeAllocations.map(allocation => ({
         id: allocation.id,
         deployment: allocation.subgraphDeployment.id.display,
@@ -565,10 +582,11 @@ class Agent {
     ])
 
     // Ensure the network subgraph is never allocated towards
-    if (this.networkSubgraph instanceof SubgraphDeploymentID) {
-      const networkSubgraphDeployment = this.networkSubgraph
+    if (this.networkSubgraph.deployment?.id.bytes32) {
+      const networkSubgraphDeploymentId = this.networkSubgraph.deployment.id
       targetDeployments = targetDeployments.filter(
-        deployment => deployment.bytes32 !== networkSubgraphDeployment.bytes32,
+        deployment =>
+          deployment.bytes32 !== networkSubgraphDeploymentId.bytes32,
       )
     }
 
@@ -622,10 +640,7 @@ class Agent {
     const desiredAllocationAmount = rule?.allocationAmount
       ? BigNumber.from(rule.allocationAmount)
       : this.indexer.defaultAllocationAmount
-    const desiredNumberOfAllocations = Math.max(
-      1,
-      rule?.parallelAllocations || 1,
-    )
+    const desiredNumberOfAllocations = 1
     const activeAllocationAmount = activeAllocations.reduce(
       (sum, allocation) => sum.add(allocation.allocatedTokens),
       BigNumber.from('0'),
@@ -679,13 +694,12 @@ class Agent {
 
     // If there are no allocations at all yet, create a new allocation
     if (activeAllocations.length === 0) {
-      logger.info(`No active allocations for deployment, creating some now`, {
-        desiredNumberOfAllocations,
-        allocationAmount: formatGRT(allocationAmount),
+      logger.info(`No active allocation for deployment, creating one now`, {
+        allocationAmount: formatGRT(desiredAllocationAmount),
       })
       const allocationsCreated = await this.network.allocate(
         deployment,
-        allocationAmount,
+        desiredAllocationAmount,
         activeAllocations,
       )
       if (allocationsCreated) {
@@ -704,7 +718,7 @@ class Agent {
           desiredNumberOfAllocations,
           activeAllocations: activeAllocations.length,
           allocationsToRemove: allocationsToRemove,
-          allocationAmount: formatGRT(allocationAmount),
+          allocationAmount: formatGRT(desiredAllocationAmount),
         },
       )
       await pMap(
@@ -735,9 +749,8 @@ class Agent {
       expiredAllocations,
       async (allocation: Allocation) => {
         try {
-          const onChainAllocation = await this.network.contracts.staking.getAllocation(
-            allocation.id,
-          )
+          const onChainAllocation =
+            await this.network.contracts.staking.getAllocation(allocation.id)
           return onChainAllocation.closedAtEpoch.eq('0')
         } catch (err) {
           this.logger.warn(
@@ -768,7 +781,7 @@ class Agent {
           const { newAllocation, reallocated } = await this.reallocate(
             epochStartBlock,
             oldAllocation,
-            allocationAmount,
+            desiredAllocationAmount,
             activeAllocations,
           )
           if (reallocated) {
