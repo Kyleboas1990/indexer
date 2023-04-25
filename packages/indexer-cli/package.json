@@ -26,7 +26,7 @@
     "graphql-tag": "2.11.0",
     "isomorphic-fetch": "3.0.0",
     "table": "6.0.3",
-    "yaml": "1.10.0"
+    "yaml": "2.2.2"
   },
   "devDependencies": {
     "@types/isomorphic-fetch": "0.0.35",
