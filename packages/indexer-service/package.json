@@ -26,7 +26,7 @@
     "scrypt": "https://registry.yarnpkg.com/@favware/skip-dependency/-/skip-dependency-1.0.2.tgz"
   },
   "dependencies": {
-    "@google-cloud/profiler": "4.1.1",
+    "@google-cloud/profiler": "5.0.5",
     "@graphprotocol/common-ts": "1.7.0",
     "@graphprotocol/indexer-common": "^0.18.4",
     "@graphprotocol/indexer-native": "^0.18.1",
