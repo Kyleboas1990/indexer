@@ -46,7 +46,7 @@
     "graphql-tag": "2.11.0",
     "graphql-tools": "5.0.0",
     "isomorphic-fetch": "3.0.0",
-    "merkletreejs": "^0.2.13",
+    "merkletreejs": "^0.3.11",
     "morgan": "1.9.1",
     "p-map": "4.0.0",
     "p-queue": "6.4.0",
