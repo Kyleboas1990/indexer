@@ -40,7 +40,7 @@
     "cross-fetch": "3.0.4",
     "ethers": "5.4.4",
     "evt": "1.9.12",
-    "express": "4.17.1",
+    "express": "4.19.2",
     "express-graphql": "0.9.0",
     "graphql": "15.4.0",
     "graphql-tag": "2.11.0",
