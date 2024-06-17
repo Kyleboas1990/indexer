@@ -34,7 +34,7 @@
     "body-parser": "1.19.0",
     "cors": "2.8.5",
     "eslint": "7.12.1",
-    "ethers": "5.4.4",
+    "ethers": "6.0.0",
     "evt": "1.9.12",
     "express": "4.17.1",
     "fastify": "3.13.0",
