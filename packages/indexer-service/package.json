@@ -26,14 +26,14 @@
     "scrypt": "https://registry.yarnpkg.com/@favware/skip-dependency/-/skip-dependency-1.0.2.tgz"
   },
   "dependencies": {
-    "@google-cloud/profiler": "4.1.1",
-    "@graphprotocol/common-ts": "1.7.0",
+    "@google-cloud/profiler": "6.0.0",
+    "@graphprotocol/common-ts": "2.0.4",
     "@graphprotocol/indexer-common": "^0.18.4",
     "@graphprotocol/indexer-native": "^0.18.1",
     "@thi.ng/cache": "1.0.59",
     "@urql/core": "1.13.1",
     "apollo-link-http": "1.5.17",
-    "axios": "0.21.1",
+    "axios": "1.6.8",
     "body-parser": "1.19.0",
     "bs58": "4.0.1",
     "cors": "2.8.5",
