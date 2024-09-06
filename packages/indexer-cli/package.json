@@ -14,7 +14,7 @@
     "disputes": "yarn prepare && ./dist/cli.js indexer disputes get"
   },
   "dependencies": {
-    "@graphprotocol/common-ts": "1.7.0",
+    "@graphprotocol/common-ts": "2.0.4",
     "@graphprotocol/indexer-common": "^0.18.4",
     "@iarna/toml": "2.2.5",
     "@thi.ng/iterators": "5.1.40",
@@ -22,10 +22,10 @@
     "chalk": "4.1.0",
     "env-paths": "2.2.0",
     "ethers": "5.4.4",
-    "gluegun": "4.5.0",
+    "gluegun": "4.7.1",
     "graphql-tag": "2.11.0",
     "isomorphic-fetch": "3.0.0",
-    "table": "6.0.3",
+    "table": "6.7.2",
     "yaml": "1.10.0"
   },
   "devDependencies": {
