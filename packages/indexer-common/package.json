@@ -36,7 +36,7 @@
     "eslint": "7.12.1",
     "ethers": "5.4.4",
     "evt": "1.9.12",
-    "express": "4.17.1",
+    "express": "4.21.2",
     "fastify": "3.13.0",
     "graphql": "15.4.0",
     "graphql-tag": "2.11.0",
