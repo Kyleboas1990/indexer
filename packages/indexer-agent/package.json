@@ -42,7 +42,7 @@
     "p-reduce": "2.1.0",
     "p-retry": "4.4.0",
     "umzug": "3.0.0-beta.6",
-    "yargs": "16.1.0"
+    "yargs": "18.0.0"
   },
   "devDependencies": {
     "@types/bs58": "4.0.1",
